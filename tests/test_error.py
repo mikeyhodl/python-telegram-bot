@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2022
+# Copyright (C) 2015-2025
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -21,18 +21,21 @@ from collections import defaultdict
 
 import pytest
 
-from telegram import TelegramError, TelegramDecryptionError
 from telegram.error import (
-    Unauthorized,
+    BadRequest,
+    ChatMigrated,
+    Conflict,
+    EndPointNotFound,
+    Forbidden,
     InvalidToken,
     NetworkError,
-    BadRequest,
-    TimedOut,
-    ChatMigrated,
+    PassportDecryptionError,
     RetryAfter,
-    Conflict,
+    TelegramError,
+    TimedOut,
 )
-from telegram.ext.callbackdatacache import InvalidCallbackData
+from telegram.ext import InvalidCallbackData
+from tests.auxil.slots import mro_slots
 
 
 class TestErrors:
@@ -47,14 +50,14 @@ class TestErrors:
             raise TelegramError("Bad Request: test message")
 
     def test_unauthorized(self):
-        with pytest.raises(Unauthorized, match="test message"):
-            raise Unauthorized("test message")
-        with pytest.raises(Unauthorized, match="^Test message$"):
-            raise Unauthorized("Error: test message")
-        with pytest.raises(Unauthorized, match="^Test message$"):
-            raise Unauthorized("[Error]: test message")
-        with pytest.raises(Unauthorized, match="^Test message$"):
-            raise Unauthorized("Bad Request: test message")
+        with pytest.raises(Forbidden, match="test message"):
+            raise Forbidden("test message")
+        with pytest.raises(Forbidden, match="^Test message$"):
+            raise Forbidden("Error: test message")
+        with pytest.raises(Forbidden, match="^Test message$"):
+            raise Forbidden("[Error]: test message")
+        with pytest.raises(Forbidden, match="^Test message$"):
+            raise Forbidden("Bad Request: test message")
 
     def test_invalid_token(self):
         with pytest.raises(InvalidToken, match="Invalid token"):
@@ -85,26 +88,23 @@ class TestErrors:
             raise TimedOut
 
     def test_chat_migrated(self):
-        with pytest.raises(ChatMigrated, match="Group migrated to supergroup. New chat id: 1234"):
+        with pytest.raises(ChatMigrated, match="New chat id: 1234") as e:
             raise ChatMigrated(1234)
-        try:
-            raise ChatMigrated(1234)
-        except ChatMigrated as e:
-            assert e.new_chat_id == 1234
+        assert e.value.new_chat_id == 1234
 
     def test_retry_after(self):
-        with pytest.raises(RetryAfter, match="Flood control exceeded. Retry in 12.0 seconds"):
+        with pytest.raises(RetryAfter, match="Flood control exceeded. Retry in 12 seconds"):
             raise RetryAfter(12)
 
     def test_conflict(self):
-        with pytest.raises(Conflict, match='Something something.'):
-            raise Conflict('Something something.')
+        with pytest.raises(Conflict, match="Something something."):
+            raise Conflict("Something something.")
 
     @pytest.mark.parametrize(
-        "exception, attributes",
+        ("exception", "attributes"),
         [
             (TelegramError("test message"), ["message"]),
-            (Unauthorized("test message"), ["message"]),
+            (Forbidden("test message"), ["message"]),
             (InvalidToken(), ["message"]),
             (NetworkError("test message"), ["message"]),
             (BadRequest("test message"), ["message"]),
@@ -112,8 +112,9 @@ class TestErrors:
             (ChatMigrated(1234), ["message", "new_chat_id"]),
             (RetryAfter(12), ["message", "retry_after"]),
             (Conflict("test message"), ["message"]),
-            (TelegramDecryptionError("test message"), ["message"]),
-            (InvalidCallbackData('test data'), ['callback_data']),
+            (PassportDecryptionError("test message"), ["message"]),
+            (InvalidCallbackData("test data"), ["callback_data"]),
+            (EndPointNotFound("endPoint"), ["message"]),
         ],
     )
     def test_errors_pickling(self, exception, attributes):
@@ -125,11 +126,34 @@ class TestErrors:
         for attribute in attributes:
             assert getattr(unpickled, attribute) == getattr(exception, attribute)
 
-    def test_pickling_test_coverage(self):
+    @pytest.mark.parametrize(
+        "inst",
+        [
+            (TelegramError("test message")),
+            (Forbidden("test message")),
+            (InvalidToken()),
+            (NetworkError("test message")),
+            (BadRequest("test message")),
+            (TimedOut()),
+            (ChatMigrated(1234)),
+            (RetryAfter(12)),
+            (Conflict("test message")),
+            (PassportDecryptionError("test message")),
+            (InvalidCallbackData("test data")),
+            (EndPointNotFound("test message")),
+        ],
+    )
+    def test_slot_behaviour(self, inst):
+        for attr in inst.__slots__:
+            assert getattr(inst, attr, "err") != "err", f"got extra slot '{attr}'"
+        assert len(mro_slots(inst)) == len(set(mro_slots(inst))), "duplicate slot"
+
+    def test_coverage(self):
         """
-        This test is only here to make sure that new errors will override __reduce__ properly.
+        This test is only here to make sure that new errors will override __reduce__ and set
+        __slots__ properly.
         Add the new error class to the below covered_subclasses dict, if it's covered in the above
-        test_errors_pickling test.
+        test_errors_pickling and test_slots_behavior tests.
         """
 
         def make_assertion(cls):
@@ -141,17 +165,32 @@ class TestErrors:
         covered_subclasses.update(
             {
                 TelegramError: {
-                    Unauthorized,
+                    Forbidden,
                     InvalidToken,
                     NetworkError,
                     ChatMigrated,
                     RetryAfter,
                     Conflict,
-                    TelegramDecryptionError,
+                    PassportDecryptionError,
                     InvalidCallbackData,
+                    EndPointNotFound,
                 },
                 NetworkError: {BadRequest, TimedOut},
             }
         )
 
         make_assertion(TelegramError)
+
+    def test_string_representations(self):
+        """We just randomly test a few of the subclasses - should suffice"""
+        e = TelegramError("This is a message")
+        assert repr(e) == "TelegramError('This is a message')"
+        assert str(e) == "This is a message"
+
+        e = RetryAfter(42)
+        assert repr(e) == "RetryAfter('Flood control exceeded. Retry in 42 seconds')"
+        assert str(e) == "Flood control exceeded. Retry in 42 seconds"
+
+        e = BadRequest("This is a message")
+        assert repr(e) == "BadRequest('This is a message')"
+        assert str(e) == "This is a message"

@@ -51,6 +51,8 @@ nosetests.xml
 coverage.xml
 *,cover
 .coveralls.yml
+.testmondata
+.testmondata-journal
 
 # Translations
 *.mo
@@ -68,6 +70,9 @@ target/
 
 # Sublime Text 2
 *.sublime*
+
+# VS Code
+.vscode
 
 # unitests files
 game.gif
@@ -87,3 +92,6 @@ telegram.jpg
 
 # virtual env
 venv*
+
+# environment manager:
+.mise.toml

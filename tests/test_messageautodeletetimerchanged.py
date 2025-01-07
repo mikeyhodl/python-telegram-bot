@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2022
+# Copyright (C) 2015-2025
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -16,24 +16,23 @@
 # You should have received a copy of the GNU Lesser Public License
 # along with this program.  If not, see [http://www.gnu.org/licenses/].
 
-from telegram import MessageAutoDeleteTimerChanged, VoiceChatEnded
+from telegram import MessageAutoDeleteTimerChanged, VideoChatEnded
+from tests.auxil.slots import mro_slots
 
 
-class TestMessageAutoDeleteTimerChanged:
+class TestMessageAutoDeleteTimerChangedWithoutRequest:
     message_auto_delete_time = 100
 
-    def test_slot_behaviour(self, recwarn, mro_slots):
+    def test_slot_behaviour(self):
         action = MessageAutoDeleteTimerChanged(self.message_auto_delete_time)
         for attr in action.__slots__:
-            assert getattr(action, attr, 'err') != 'err', f"got extra slot '{attr}'"
-        assert not action.__dict__, f"got missing slot(s): {action.__dict__}"
+            assert getattr(action, attr, "err") != "err", f"got extra slot '{attr}'"
         assert len(mro_slots(action)) == len(set(mro_slots(action))), "duplicate slot"
-        action.custom = 'should give warning'
-        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     def test_de_json(self):
-        json_dict = {'message_auto_delete_time': self.message_auto_delete_time}
+        json_dict = {"message_auto_delete_time": self.message_auto_delete_time}
         madtc = MessageAutoDeleteTimerChanged.de_json(json_dict, None)
+        assert madtc.api_kwargs == {}
 
         assert madtc.message_auto_delete_time == self.message_auto_delete_time
 
@@ -48,7 +47,7 @@ class TestMessageAutoDeleteTimerChanged:
         a = MessageAutoDeleteTimerChanged(100)
         b = MessageAutoDeleteTimerChanged(100)
         c = MessageAutoDeleteTimerChanged(50)
-        d = VoiceChatEnded(25)
+        d = VideoChatEnded(25)
 
         assert a == b
         assert hash(a) == hash(b)
